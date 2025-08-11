@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Resource Library</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <h1>Resource Library</h1>
+    <div class="controls">
+      <input id="searchInput" type="search" placeholder="Search resources…" aria-label="Search resources"/>
+      <select id="categoryFilter" aria-label="Filter by category">
+        <option value="">All categories</option>
+      </select>
+    </div>
+  </header>
+
+  <main>
+    <div id="status" class="status">Loading resources…</div>
+    <ul id="fileList" class="file-list" aria-live="polite"></ul>
+  </main>
+
+  <footer>
+    <div class="footnote">
+      <span>Powered by GitHub</span> •
+      <a id="repoLink" href="#" target="_blank" rel="noopener">View Repository</a>
+    </div>
+  </footer>
+
+  <script src="config.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>
