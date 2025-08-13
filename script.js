@@ -1,5 +1,7 @@
 // Resource Library App (Contents API version)
 (function () {
+  let ALL_FILES = []; // ADDED: cache of all files
+
   const statusEl = document.getElementById("status");
   const listEl = document.getElementById("fileList");
   const searchInput = document.getElementById("searchInput");
@@ -162,7 +164,8 @@
       opt.textContent = cat;
       categoryFilter.appendChild(opt);
     });
-if ([...categories].includes(current)) categoryFilter.value = current;
+    if ([...categories].includes(current)) categoryFilter.value = current;
+
     const term = searchInput.value.trim().toLowerCase();
     const cat = categoryFilter.value;
 
@@ -190,12 +193,12 @@ if ([...categories].includes(current)) categoryFilter.value = current;
       const name = document.createElement("div");
       name.className = "name";
       name.textContent = f.name;
-      name.title = f.name; 
+      name.title = f.name; // tooltip
 
       const category = document.createElement("div");
       category.className = "category";
       category.textContent = f.category || "Uncategorized";
-      category.title = f.category  || "Uncategorized";
+      category.title = f.category  || "Uncategorized"; // tooltip
 
       const actions = document.createElement("div");
       actions.className = "actions";
@@ -266,27 +269,34 @@ if ([...categories].includes(current)) categoryFilter.value = current;
         // No folders—just show any top-level files
         const files = normalizeFiles(top, "");
         console.log("Fetched top-level files:", files.map((f) => f.path));
-        renderFiles(files);
+
+        ALL_FILES = files;           // ADDED: cache
+        renderFiles(ALL_FILES);      // ADDED: render from cache
         showStatus("", false);
-        return;
-      }
-
-      // 2) For each category, list its files (non-recursive)
-      const allFiles = [];
-      for (const cat of categories) {
-        try {
-          const items = await listCategoryFiles(cat);
-          const files = normalizeFiles(items, cat);
-          allFiles.push(...files);
-        } catch (e) {
-          console.error(`Failed reading category "${cat}":`, e);
-          // Keep going; other categories may still load
+      } else {
+        // 2) For each category, list its files (non-recursive)
+        const allFiles = [];
+        for (const cat of categories) {
+          try {
+            const items = await listCategoryFiles(cat);
+            const files = normalizeFiles(items, cat);
+            allFiles.push(...files);
+          } catch (e) {
+            console.error(`Failed reading category "${cat}":`, e);
+            // Keep going; other categories may still load
+          }
         }
+
+        console.log("Fetched files:", allFiles.map((f) => f.path));
+        ALL_FILES = allFiles;        // ADDED: cache
+        renderFiles(ALL_FILES);      // ADDED: render from cache
+        showStatus("", false);
       }
 
-      console.log("Fetched files:", allFiles.map((f) => f.path));
-      renderFiles(allFiles);
-      showStatus("", false);
+      // ADDED: live filtering
+      searchInput.addEventListener("input", () => renderFiles(ALL_FILES));
+      categoryFilter.addEventListener("change", () => renderFiles(ALL_FILES));
+
     } catch (e) {
       console.error("[Init failed]", e);
       const privateHint = !token ? " If this repo is PRIVATE, set GITHUB_TOKEN in config.js (note: tokens are visible to anyone who can view the page)." : "";
