@@ -14,6 +14,10 @@ header {
   padding: 1rem;
   box-shadow: 0 1px 4px rgba(0,0,0,0.08);
 }
+
+
+
+
 h1 {
   margin: 0 0 .75rem 0;
   font-size: 1.25rem;
@@ -100,3 +104,113 @@ footer {
 }
 .footnote a { color: inherit; }
 .hidden { display: none !important; }
+/* ===== Layout ===== */
+#fileList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+}
+
+/* ===== Card ===== */
+#fileList .file {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid rgba(0,0,0,.08);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0,0,0,.04);
+}
+
+/* Title: clamp to 2 lines for tidy cards */
+#fileList .file .name {
+  font-weight: 600;
+  font-size: 16px;
+  line-height: 1.25;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;      /* show max 2 lines */
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+  min-height: 2.6em;          /* keeps card heights more even */
+}
+
+/* Category pill */
+#fileList .file .category {
+  align-self: flex-start;
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #3730a3;
+}
+
+/* Path (meta) — small + truncated */
+#fileList .file .meta {
+  font-size: 12px;
+  color: #6b7280;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Actions row */
+#fileList .file .actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* Buttons */
+#fileList .file .btn,
+#fileList .file button {
+  appearance: none;
+  border: 1px solid rgba(0,0,0,.1);
+  background: #f9fafb;
+  padding: 6px 10px;
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 1;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+#fileList .file .btn:hover,
+#fileList .file button:hover {
+  background: #fff;
+  box-shadow: 0 1px 0 rgba(0,0,0,.04);
+}
+
+/* Make Open/Download primary-ish */
+#fileList .file .btn:nth-child(1),
+#fileList .file .btn:nth-child(2) {
+  background: #eef2ff;
+  border-color: #c7d2fe;
+}
+
+/* iPad touch target spacing */
+@media (pointer: coarse) {
+  #fileList .file .btn,
+  #fileList .file button { padding: 10px 12px; }
+}
+
+/* Respect dark mode */
+@media (prefers-color-scheme: dark) {
+  #fileList .file { background: #0b0b0c; border-color: #1f2937; box-shadow: none; }
+  #fileList .file .category { background: #111827; color: #c7d2fe; }
+  #fileList .file .meta { color: #9ca3af; }
+  #fileList .file .btn, #fileList .file button {
+    background: #111827; border-color: #1f2937; color: #e5e7eb;
+  }
+  #fileList .file .btn:nth-child(1),
+  #fileList .file .btn:nth-child(2) {
+    background: #0f172a; border-color: #1e293b;
+  }
+}
