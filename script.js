@@ -1,4 +1,4 @@
-// Resource Library App
+// Resource Library App (Contents API version)
 (function () {
   const statusEl = document.getElementById("status");
   const listEl = document.getElementById("fileList");
@@ -9,13 +9,14 @@
   const owner = CONFIG.REPO_OWNER;
   const repo = CONFIG.REPO_NAME;
   const branch = CONFIG.BRANCH;
-  const token = CONFIG.GITHUB_TOKEN;
+  const token = CONFIG.GITHUB_TOKEN; // null for public repos
 
   repoLink.href = `https://github.com/${owner}/${repo}`;
   repoLink.textContent = `${owner}/${repo}`;
 
   const headers = token ? { Authorization: `Bearer ${token}` } : {};
 
+  // —— UI helpers
   const showStatus = (msg, show = true) => {
     statusEl.textContent = msg;
     statusEl.style.display = show ? "block" : "none";
@@ -26,7 +27,7 @@
       await navigator.clipboard.writeText(text);
       showStatus("Link copied to clipboard.", true);
       setTimeout(() => showStatus("", false), 1500);
-    } catch (e) {
+    } catch {
       alert("Copy failed. Here’s the link:\n" + text);
     }
   };
@@ -35,7 +36,7 @@
     if (navigator.share) {
       try {
         await navigator.share({ title, text, url });
-      } catch (e) {
+      } catch {
         await copyToClipboard(url);
       }
     } else {
@@ -43,112 +44,76 @@
     }
   };
 
+  // —— File type helpers
   const isBinary = (path) => {
-    const binExt = [
-      ".png",
-      ".jpg",
-      ".jpeg",
-      ".gif",
-      ".webp",
-      ".pdf",
-      ".zip",
-      ".pptx",
-      ".docx",
-      ".xlsx",
-      ".mov",
-      ".mp4",
-      ".mp3",
-      ".wav",
-      ".avi",
-      ".mkv",
-    ];
-    return binExt.some((ext) => path.toLowerCase().endsWith(ext));
+    const binExt = [".png",".jpg",".jpeg",".gif",".webp",".pdf",".zip",".pptx",".docx",".xlsx",".mov",".mp4",".mp3",".wav",".avi",".mkv"];
+    const p = path.toLowerCase();
+    return binExt.some((ext) => p.endsWith(ext));
   };
 
-  // ---------- Safe path helpers (encode each segment, keep slashes) ----------
+  // —— Safe path helpers (encode each segment, keep slashes)
   function encodePathSegments(p) {
-    return String(p)
-      .split("/")
-      .map(encodeURIComponent)
-      .join("/");
+    return String(p).split("/").map(encodeURIComponent).join("/");
   }
   function toRawUrl(path) {
-    return `https://raw.githubusercontent.com/${owner}/${repo}/${encodeURIComponent(
-      branch
-    )}/${encodePathSegments(path)}`;
+    return `https://raw.githubusercontent.com/${owner}/${repo}/${encodeURIComponent(branch)}/${encodePathSegments(path)}`;
   }
   function toGithubBlobUrl(path) {
-    return `https://github.com/${owner}/${repo}/blob/${encodeURIComponent(
-      branch
-    )}/${encodePathSegments(path)}`;
+    return `https://github.com/${owner}/${repo}/blob/${encodeURIComponent(branch)}/${encodePathSegments(path)}`;
   }
   function toDownloadUrl(path) {
     return isBinary(path) ? toRawUrl(path) : toGithubBlobUrl(path);
   }
-  // --------------------------------------------------------------------------
 
-  // ---------- Robust GitHub API helpers ----------
-  async function apiFetch(url, opts = {}) {
-    const res = await fetch(url, { headers, ...opts });
-    // Helpful diagnostics for rate limits & 404s
-    const rl = {
-      limit: res.headers.get("x-ratelimit-limit"),
-      remaining: res.headers.get("x-ratelimit-remaining"),
-      reset: res.headers.get("x-ratelimit-reset"),
-    };
+  // —— Robust fetch with diagnostics
+  async function apiJson(url) {
+    const res = await fetch(url, { headers });
     if (!res.ok) {
       const body = await res.text().catch(() => "");
+      const rl = {
+        limit: res.headers.get("x-ratelimit-limit"),
+        remaining: res.headers.get("x-ratelimit-remaining"),
+        reset: res.headers.get("x-ratelimit-reset"),
+      };
       console.error("[GitHub API error]", res.status, url, rl, body);
-      throw new Error(`GitHub API ${res.status} for ${url}`);
+      throw new Error(`${res.status} @ ${url}`);
     }
     return res.json();
   }
 
-  // Resolve branch ➜ commit SHA (try two endpoints)
-  async function getBranchSha(owner, repo, branch) {
-    // 1) refs endpoint
-    const refUrl = `https://api.github.com/repos/${owner}/${repo}/git/refs/heads/${encodeURIComponent(
-      branch
-    )}`;
-    try {
-      const refData = await apiFetch(refUrl);
-      if (refData && refData.object && refData.object.sha) {
-        return refData.object.sha;
-      }
-    } catch (e) {
-      // fall through to /branches
-      console.warn("refs/heads failed, trying /branches:", e.message);
-    }
-
-    // 2) branches endpoint
-    const branchUrl = `https://api.github.com/repos/${owner}/${repo}/branches/${encodeURIComponent(
-      branch
-    )}`;
-    const bData = await apiFetch(branchUrl);
-    if (bData && bData.commit && bData.commit.sha) {
-      return bData.commit.sha;
-    }
-    throw new Error("Unable to resolve branch to SHA");
+  // —— Contents API helpers
+  // List top-level items (we'll treat type=dir as categories)
+  async function listTopLevel() {
+    const url = `https://api.github.com/repos/${owner}/${repo}/contents?ref=${encodeURIComponent(branch)}`;
+    return apiJson(url); // array of {name, path, type, ...}
   }
 
-  async function getRepoTreeRecursive(owner, repo, branch) {
-    const sha = await getBranchSha(owner, repo, branch);
-    const treeUrl = `https://api.github.com/repos/${owner}/${repo}/git/trees/${sha}?recursive=1`;
-    return apiFetch(treeUrl);
+  // List files inside a category folder (non-recursive)
+  async function listCategoryFiles(catName) {
+    const safe = encodePathSegments(catName);
+    const url = `https://api.github.com/repos/${owner}/${repo}/contents/${safe}?ref=${encodeURIComponent(branch)}`;
+    return apiJson(url); // array inside that folder
   }
-  // ------------------------------------------------
+
+  function normalizeFiles(items, category) {
+    return items
+      .filter((it) => it.type === "file")
+      .map((it) => ({
+        path: it.path,                               // e.g. "Category/File Name.pdf"
+        name: it.name,                               // file name
+        category: category || (it.path.includes("/") ? it.path.split("/")[0] : ""),
+      }));
+  }
 
   const renderFiles = (files) => {
     listEl.innerHTML = "";
     const categories = new Set([""]);
-    files.forEach((f) => {
-      if (f.category) categories.add(f.category);
-    });
+    files.forEach((f) => { if (f.category) categories.add(f.category); });
 
     const current = categoryFilter.value;
     categoryFilter.innerHTML = '<option value="">All categories</option>';
     [...categories].sort().forEach((cat) => {
-      if (cat === "") return;
+      if (!cat) return;
       const opt = document.createElement("option");
       opt.value = cat;
       opt.textContent = cat;
@@ -193,14 +158,14 @@
 
       const viewBtn = document.createElement("a");
       viewBtn.className = "btn";
-      viewBtn.href = toGithubBlobUrl(f.path); // encoded
+      viewBtn.href = toGithubBlobUrl(f.path);
       viewBtn.target = "_blank";
       viewBtn.rel = "noopener";
       viewBtn.textContent = "Open";
 
       const downloadBtn = document.createElement("a");
       downloadBtn.className = "btn";
-      downloadBtn.href = toDownloadUrl(f.path); // encoded
+      downloadBtn.href = toDownloadUrl(f.path);
       downloadBtn.target = "_blank";
       downloadBtn.rel = "noopener";
       downloadBtn.textContent = isBinary(f.path) ? "Download" : "View Raw";
@@ -222,9 +187,7 @@
         e.preventDefault();
         const sub = encodeURIComponent(`Resource: ${f.name}`);
         const url = toDownloadUrl(f.path);
-        const body = encodeURIComponent(
-          `Hi,\n\nHere's a resource you might find helpful:\n${url}\n\n`
-        );
+        const body = encodeURIComponent(`Hi,\n\nHere's a resource you might find helpful:\n${url}\n\n`);
         window.location.href = `mailto:?subject=${sub}&body=${body}`;
       });
 
@@ -248,40 +211,46 @@
   const init = async () => {
     showStatus("Loading resources…", true);
     try {
-      // Robust tree fetch: resolve branch ➜ SHA ➜ tree
-      const data = await getRepoTreeRecursive(owner, repo, branch);
+      // 1) Get top-level items and extract categories (dirs)
+      const top = await listTopLevel();
+      const categories = top.filter((it) => it.type === "dir").map((d) => d.name);
 
-      // Map blobs to files
-      const files = (data.tree || [])
-        .filter((n) => n.type === "blob")
-        .map((n) => ({
-          path: n.path,
-          name: n.path.split("/").pop(),
-          category: n.path.includes("/") ? n.path.split("/")[0] : "",
-        }));
+      if (!categories.length) {
+        // No folders—just show any top-level files
+        const files = normalizeFiles(top, "");
+        console.log("Fetched top-level files:", files.map((f) => f.path));
+        renderFiles(files);
+        showStatus("", false);
+        return;
+      }
 
-      console.log("Fetched files:", files.map((f) => f.path));
-      renderFiles(files);
+      // 2) For each category, list its files (non-recursive)
+      const allFiles = [];
+      for (const cat of categories) {
+        try {
+          const items = await listCategoryFiles(cat);
+          const files = normalizeFiles(items, cat);
+          allFiles.push(...files);
+        } catch (e) {
+          console.error(`Failed reading category "${cat}":`, e);
+          // Keep going; other categories may still load
+        }
+      }
 
-      searchInput.addEventListener("input", () => renderFiles(files));
-      categoryFilter.addEventListener("change", () => renderFiles(files));
+      console.log("Fetched files:", allFiles.map((f) => f.path));
+      renderFiles(allFiles);
       showStatus("", false);
     } catch (e) {
       console.error("[Init failed]", e);
-
-      // Friendlier guidance for common cases:
-      if (!token) {
-        // If repo is private, unauthenticated fetches will fail.
-        showStatus(
-          "Failed to load resources. If this is a PRIVATE repo, set GITHUB_TOKEN in config.js. Otherwise check branch name in config.js.",
-          true
-        );
-      } else {
-        showStatus(
-          "Failed to load resources. Check your internet connection, repo/branch names in config.js, or rate limit.",
-          true
-        );
-      }
+      const privateHint = !token ? " If this repo is PRIVATE, set GITHUB_TOKEN in config.js (note: tokens are visible to anyone who can view the page)." : "";
+      showStatus(
+        `Failed to load resources. ${e.message || e}${privateHint}
+Check:
+• CONFIG.REPO_OWNER = ${owner}
+• CONFIG.REPO_NAME = ${repo}
+• CONFIG.BRANCH = ${branch}`,
+        true
+      );
     }
   };
 
