@@ -245,6 +245,14 @@
 
       const meta = document.createElement("div");
       meta.className = "meta";
+      // show only the last 1–2 segments (e.g., "Folder / file.pdf")
+const parts = f.path.split("/");
+const shortPath = parts.length >= 2
+  ? `${parts[parts.length - 2]} / ${parts[parts.length - 1]}`
+  : parts[0];
+
+meta.textContent = shortPath;      // fits on one line, will ellipsize if needed
+meta.title = f.path;               // full path on hover
       meta.textContent = f.path;
 
       li.appendChild(name);
