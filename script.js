@@ -8,13 +8,17 @@
 
   const owner = CONFIG.REPO_OWNER;
   const repo = CONFIG.REPO_NAME;
-  const branch = CONFIG.BRANCH;
-  const token = CONFIG.GITHUB_TOKEN; // null for public repos
+  const branch = CONFIG.BRANCH;                // may be "", "main", "master", etc.
+  const token = CONFIG.GITHUB_TOKEN;           // null for public repos
 
   repoLink.href = `https://github.com/${owner}/${repo}`;
   repoLink.textContent = `${owner}/${repo}`;
 
-  const headers = token ? { Authorization: `Bearer ${token}` } : {};
+  // CHANGED: add Accept header + token if present
+  const headers = {
+    Accept: "application/vnd.github+json",
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
 
   // —— UI helpers
   const showStatus = (msg, show = true) => {
@@ -55,19 +59,25 @@
   function encodePathSegments(p) {
     return String(p).split("/").map(encodeURIComponent).join("/");
   }
+
+  // CHANGED: we’ll resolve the branch before using these URL builders
+  let resolvedBranch = branch || ""; // will be set by resolveBranch()
+
   function toRawUrl(path) {
-    return `https://raw.githubusercontent.com/${owner}/${repo}/${encodeURIComponent(branch)}/${encodePathSegments(path)}`;
+    return `https://raw.githubusercontent.com/${owner}/${repo}/${encodeURIComponent(resolvedBranch)}/${encodePathSegments(path)}`;
   }
   function toGithubBlobUrl(path) {
-    return `https://github.com/${owner}/${repo}/blob/${encodeURIComponent(branch)}/${encodePathSegments(path)}`;
+    return `https://github.com/${owner}/${repo}/blob/${encodeURIComponent(resolvedBranch)}/${encodePathSegments(path)}`;
   }
   function toDownloadUrl(path) {
     return isBinary(path) ? toRawUrl(path) : toGithubBlobUrl(path);
   }
 
-  // —— Robust fetch with diagnostics
+  // —— Robust fetch with diagnostics (kept, with better messages)
   async function apiJson(url) {
     const res = await fetch(url, { headers });
+
+    // CHANGED: clearer errors + rate limit hinting
     if (!res.ok) {
       const body = await res.text().catch(() => "");
       const rl = {
@@ -75,23 +85,56 @@
         remaining: res.headers.get("x-ratelimit-remaining"),
         reset: res.headers.get("x-ratelimit-reset"),
       };
+
+      if (res.status === 403 && rl.remaining === "0") {
+        throw new Error(
+          `GitHub rate limit reached (${rl.limit}/hr). ` +
+          `Add GITHUB_TOKEN in config.js or try later.`
+        );
+      }
+      if (res.status === 409) {
+        throw new Error(
+          `Repo/branch appears empty (409). Add at least one commit to "${resolvedBranch}".`
+        );
+      }
+      if (res.status === 404) {
+        throw new Error(
+          `Not found (404) at ${url}. Check owner/repo/branch and visibility.`
+        );
+      }
+
       console.error("[GitHub API error]", res.status, url, rl, body);
-      throw new Error(`${res.status} @ ${url}`);
+      throw new Error(`${res.status} @ ${url}\n${body.slice(0, 400)}`);
     }
     return res.json();
   }
 
-  // —— Contents API helpers
-  // List top-level items (we'll treat type=dir as categories)
+  // CHANGED: repo/branch resolution helpers
+  async function getRepoInfo() {
+    const url = `https://api.github.com/repos/${owner}/${repo}`;
+    return apiJson(url); // { default_branch, private, ... }
+  }
+
+  async function resolveBranch() {
+    if (resolvedBranch) return resolvedBranch; // already set from CONFIG
+
+    const info = await getRepoInfo();
+    const def = info.default_branch || "main";
+    resolvedBranch = def;
+    return resolvedBranch;
+  }
+
+  // —— Contents API helpers (now use resolvedBranch)
   async function listTopLevel() {
-    const url = `https://api.github.com/repos/${owner}/${repo}/contents?ref=${encodeURIComponent(branch)}`;
+    const ref = encodeURIComponent(resolvedBranch);
+    const url = `https://api.github.com/repos/${owner}/${repo}/contents?ref=${ref}`;
     return apiJson(url); // array of {name, path, type, ...}
   }
 
-  // List files inside a category folder (non-recursive)
   async function listCategoryFiles(catName) {
     const safe = encodePathSegments(catName);
-    const url = `https://api.github.com/repos/${owner}/${repo}/contents/${safe}?ref=${encodeURIComponent(branch)}`;
+    const ref = encodeURIComponent(resolvedBranch);
+    const url = `https://api.github.com/repos/${owner}/${repo}/contents/${safe}?ref=${ref}`;
     return apiJson(url); // array inside that folder
   }
 
@@ -211,6 +254,9 @@
   const init = async () => {
     showStatus("Loading resources…", true);
     try {
+      // CHANGED: resolve the branch first (auto-detect if CONFIG.BRANCH is blank/wrong)
+      await resolveBranch();
+
       // 1) Get top-level items and extract categories (dirs)
       const top = await listTopLevel();
       const categories = top.filter((it) => it.type === "dir").map((d) => d.name);
@@ -248,7 +294,7 @@
 Check:
 • CONFIG.REPO_OWNER = ${owner}
 • CONFIG.REPO_NAME = ${repo}
-• CONFIG.BRANCH = ${branch}`,
+• CONFIG.BRANCH = ${branch || "(auto)"} (resolved: ${resolvedBranch || "unknown"})`,
         true
       );
     }
