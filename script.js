@@ -190,10 +190,12 @@ if ([...categories].includes(current)) categoryFilter.value = current;
       const name = document.createElement("div");
       name.className = "name";
       name.textContent = f.name;
+      name.title = f.name; 
 
       const category = document.createElement("div");
       category.className = "category";
       category.textContent = f.category || "Uncategorized";
+      category.title = f.category  || "Uncategorized";
 
       const actions = document.createElement("div");
       actions.className = "actions";
