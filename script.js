@@ -162,8 +162,7 @@
       opt.textContent = cat;
       categoryFilter.appendChild(opt);
     });
-    if ([...categories].has(current)) categoryFilter.value = current;
-
+if ([...categories].includes(current)) categoryFilter.value = current;
     const term = searchInput.value.trim().toLowerCase();
     const cat = categoryFilter.value;
 
