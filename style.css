@@ -61,8 +61,11 @@ main { padding: 1rem; }
 }
 .file .meta {
   grid-column: 1 / -1;
-  font-size: .85rem;
-  color: #555;
+  font-size: .8rem;
+  color: #6b7280;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .file .name {
   font-weight: 600;
