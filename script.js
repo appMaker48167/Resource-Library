@@ -49,9 +49,25 @@
     return binExt.some(ext => path.toLowerCase().endsWith(ext));
   };
 
-  const toRawUrl = (path) => `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${path}`;
-  const toGithubBlobUrl = (path) => `https://github.com/${owner}/${repo}/blob/${branch}/${path}`;
-  const toDownloadUrl = (path) => isBinary(path) ? toRawUrl(path) : toGithubBlobUrl(path);
+  // ---- NEW: Safe path helpers (encode each segment, keep slashes) ----
+  function encodePathSegments(p) {
+    return String(p)
+      .split('/')
+      .map(encodeURIComponent)
+      .join('/');
+  }
+  function toRawUrl(path) {
+    // raw.githubusercontent.com/{owner}/{repo}/{branch}/{encoded path}
+    return `https://raw.githubusercontent.com/${owner}/${repo}/${encodeURIComponent(branch)}/${encodePathSegments(path)}`;
+  }
+  function toGithubBlobUrl(path) {
+    // github.com/{owner}/{repo}/blob/{branch}/{encoded path}
+    return `https://github.com/${owner}/${repo}/blob/${encodeURIComponent(branch)}/${encodePathSegments(path)}`;
+  }
+  function toDownloadUrl(path) {
+    return isBinary(path) ? toRawUrl(path) : toGithubBlobUrl(path);
+  }
+  // --------------------------------------------------------------------
 
   const renderFiles = (files) => {
     listEl.innerHTML = "";
@@ -103,14 +119,14 @@
 
       const viewBtn = document.createElement('a');
       viewBtn.className = "btn";
-      viewBtn.href = toGithubBlobUrl(f.path);
+      viewBtn.href = toGithubBlobUrl(f.path);   // encoded
       viewBtn.target = "_blank";
       viewBtn.rel = "noopener";
       viewBtn.textContent = "Open";
 
       const downloadBtn = document.createElement('a');
       downloadBtn.className = "btn";
-      downloadBtn.href = toDownloadUrl(f.path);
+      downloadBtn.href = toDownloadUrl(f.path); // encoded
       downloadBtn.target = "_blank";
       downloadBtn.rel = "noopener";
       downloadBtn.textContent = isBinary(f.path) ? "Download" : "View Raw";
@@ -131,7 +147,8 @@
       emailBtn.addEventListener('click', (e) => {
         e.preventDefault();
         const sub = encodeURIComponent(`Resource: ${f.name}`);
-        const body = encodeURIComponent(`Hi,\n\nHere's a resource you might find helpful:\n${toDownloadUrl(f.path)}\n\n`);
+        const url = toDownloadUrl(f.path);
+        const body = encodeURIComponent(`Hi,\n\nHere's a resource you might find helpful:\n${url}\n\n`);
         window.location.href = `mailto:?subject=${sub}&body=${body}`;
       });
 
@@ -170,6 +187,7 @@
           category: n.path.includes('/') ? n.path.split('/')[0] : ""
         }));
 
+      console.log("Fetched files:", files.map(f => f.path)); // helpful diagnostics
       renderFiles(files);
 
       searchInput.addEventListener('input', () => renderFiles(files));
